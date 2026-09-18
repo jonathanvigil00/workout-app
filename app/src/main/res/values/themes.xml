@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.HoofMode" parent="android:Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowBackground">@color/hoof_background</item>
+        <item name="android:statusBarColor">@color/hoof_background</item>
+        <item name="android:navigationBarColor">@color/hoof_background</item>
+        <item name="android:colorPrimary">@color/hoof_primary</item>
+    </style>
+</resources>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="hoof_background">#092328</color>
+    <color name="hoof_surface_variant">#12544F</color>
+    <color name="hoof_primary">#2A835F</color>
+    <color name="hoof_accent">#8BBB92</color>
+</resources>

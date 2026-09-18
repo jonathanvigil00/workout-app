@@ -1,0 +1,13 @@
+# Normalize everything to LF in the repo and on checkout, so line endings are
+# consistent regardless of which OS or Git config a machine has. Windows batch
+# scripts and known binary types are the explicit exceptions.
+* text=auto eol=lf
+
+*.bat text eol=crlf
+
+*.jar binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.keystore binary
