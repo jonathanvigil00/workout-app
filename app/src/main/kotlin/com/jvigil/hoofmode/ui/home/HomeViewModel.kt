@@ -7,20 +7,28 @@ import com.jvigil.hoofmode.data.repository.ActiveScheduleState
 import com.jvigil.hoofmode.data.repository.ActivityRepository
 import com.jvigil.hoofmode.data.repository.ScheduleRepository
 import com.jvigil.hoofmode.data.repository.SessionRepository
+import com.jvigil.hoofmode.domain.model.WeekDayEntry
+import com.jvigil.hoofmode.domain.model.buildWeekDayEntries
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import javax.inject.Inject
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val scheduleRepository: ScheduleRepository,
     private val sessionRepository: SessionRepository,
-    activityRepository: ActivityRepository,
+    private val activityRepository: ActivityRepository,
 ) : ViewModel() {
 
     val activeState: StateFlow<ActiveScheduleState?> =
@@ -39,6 +47,39 @@ class HomeViewModel @Inject constructor(
     val currentStreak: StateFlow<Int> =
         activityRepository.observeCurrentStreak().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
+    private val _weekStart = MutableStateFlow(startOfWeek(LocalDate.now()))
+    val weekStart: StateFlow<LocalDate> = _weekStart.asStateFlow()
+
+    private val weekDates: StateFlow<List<LocalDate>> = _weekStart
+        .map { start -> (0..6).map { start.plusDays(it.toLong()) } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), (0..6).map { _weekStart.value.plusDays(it.toLong()) })
+
+    private val weekActivities = _weekStart.flatMapLatest { start ->
+        activityRepository.observeDayActivitiesInRange(start, start.plusDays(7))
+    }
+
+    /**
+     * The displayed week's days: real history for past/today, a rotation projection for future
+     * days — not a promise, since progression only actually advances on explicit completion.
+     */
+    val weekDays: StateFlow<List<WeekDayEntry>> = combine(
+        weekDates,
+        weekActivities,
+        activityRepository.observeEarliestActivityDate(),
+        activeState,
+        isCompletedToday,
+    ) { dates, activities, earliestDate, state, completedToday ->
+        buildWeekDayEntries(
+            weekDates = dates,
+            activitiesByDate = activities,
+            earliestActivityDate = earliestDate,
+            today = LocalDate.now(),
+            isCompletedToday = completedToday,
+            scheduleItems = state?.items ?: emptyList(),
+            currentItemId = state?.currentItem?.id,
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     /** Guards against re-firing the auto-complete call while its DB write is still in flight. */
     private var autoCompletingItemId: Long? = null
 
@@ -56,6 +97,14 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    fun goToPreviousWeek() {
+        _weekStart.value = _weekStart.value.minusDays(7)
+    }
+
+    fun goToNextWeek() {
+        _weekStart.value = _weekStart.value.plusDays(7)
+    }
+
     fun startOrResumeCurrentWorkout(scheduleItemId: Long, onReady: (Long) -> Unit) {
         viewModelScope.launch { onReady(sessionRepository.getOrStartSessionForScheduleItem(scheduleItemId)) }
     }
@@ -68,3 +117,6 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch { onReady(sessionRepository.startAdHocSession()) }
     }
 }
+
+/** Sunday-first week start, matching the History calendar's convention. */
+private fun startOfWeek(date: LocalDate): LocalDate = date.minusDays((date.dayOfWeek.value % 7).toLong())
